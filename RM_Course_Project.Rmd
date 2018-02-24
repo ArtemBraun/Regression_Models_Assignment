@@ -1,0 +1,128 @@
+---
+title: "Regression Models Course Project"
+author: "Artem Braun"
+date: 11th November 2017
+output: pdf_document
+---
+
+# **Analysis of the MPG (miles per gallon) measure in regards to automatic and manual transmissions**  
+
+# **1. Executive summary**  
+  
+Motor Trend, a magazine about the automobile industry, is interested in exploring the data set of a collection of cars. Particularly, they asked to explore the relationship between a set of variables and miles per gallon (MPG) measure. We have to give elaborated answers to the following questions:  
+  
+- Is an automatic or manual transmission better for MPG  
+- Quantify the MPG difference between automatic and manual transmissions  
+  
+In order to achieve this task we performed regression model selection and diagnosed it.  
+  
+Based on provided analysis we conclude that manual transmission is more effective in terms of MPG, and the difference in effectiveness is 2.9. With manual transmission one can drive 2.9 miles more with the same amount of gas (gallon) than with automatic transmission.  
+  
+
+# **2. Data set exploratory analysis**  
+  
+One of the best and concise ways to get acquaintance with a data set is 'str' function. 
+``````{r, echo=TRUE, message=FALSE}
+data("mtcars")
+str(mtcars)
+```
+  
+We need to understand what does each variable define  
+  
+```{r, echo=FALSE, message=FALSE, results='asis'}
+library(car)
+static_help <- function(pkg, topic, out, links = tools::findHTMLlinks()) {
+  pkgRdDB = tools:::fetchRdDB(file.path(find.package(pkg), 'help', pkg))
+  force(links)
+  tools::Rd2latex(pkgRdDB[[topic]], out, package = pkg,
+                  Links = links, no_links = is.null(links))
+}
+tmp <- tempfile()
+static_help("datasets", "mtcars", tmp)
+out <- readLines(tmp)
+out <- gsub("%", "\n", out, fixed = TRUE)
+knitr::kable(out[21:31], align = 'l', col.names = "       Variable - Description")
+
+```
+  
+We see that variable 'am' (which we are interested in) is a factor one. It is binomial: it could be 0 or 1. Therefore, we cannot use simple correlation analysis here.  
+  
+The easiest way to visualize factor variables is a box plot:  
+  
+```{r, echo=TRUE, message=FALSE, results='asis'}
+library(ggplot2)
+ggplot(mtcars, aes(x=factor(am), y=mpg)) + geom_boxplot()
+```
+  
+Now we have something to work with. Apparently, we can infer that manual transmission provides more miles with the same amount of gas. This relation could be causative, since automatic transmission consumes more power than mechanical one. But this is just an idea, and visualization could be insignificant due to random chance. In other words - plot is not enough. This is the part where test statistics comes in.  
+  
+```{r, echo=TRUE, message=FALSE, results='asis'}
+test <- t.test(mpg ~ am, data= mtcars, var.equal = FALSE, paired=FALSE ,conf.level = .95)
+test$p.value
+```
+  
+Low p-value indicates that the probability of chance relationship between MPG and type of transmission is very low (<0.05). We can conclude that **manual transmission is better for MPG**. This inference is useful, but MPG might be dependent on any of other 10 variables that we have in a data set. Therefore, difference in MPG between transmission' types might depend on some other variables as well. In order to calculate the exact difference ratio we have to fit rigorous statistical model.  
+  
+To get initial broad picture of possible dependencies among variables we can use pairwise scatterplot.  
+```{r, echo=TRUE, message=FALSE, results='asis'}
+library(GGally)
+lowerFn <- function(data, mapping, method = "lm", ...) {
+        p <- ggplot(data = data, mapping = mapping) +
+             geom_point(colour = "blue") +
+             geom_smooth(method = method, color = "red", ...)
+        p
+}
+ggpairs(mtcars, lower = list(continuous = wrap(lowerFn, method = "lm")),
+                diag = list(continuous = wrap("barDiag", colour = "blue")),
+                upper = list(continuous = wrap("cor", size = 3))
+)
+
+```
+  
+We can see that many relationships have distinct linear nature and might be causative. Some of predictors may be correlated and variance of the model may be inflated. So, there is a possibility that we will have redundancies in case of fitting multivariable linear model with all 10 regressors.  
+  
+#  **3. Model selection**  
+  
+Since we observed linear relationships among many variables, we have to select only some of those ones which predict MPG the best. At first, we look at p-values of all predictors  
+``````{r, echo=TRUE, message=FALSE, results = 'asis'}
+MPG_fit <- lm(mpg ~ ., data = mtcars)
+knitr::kable(summary(MPG_fit)$coeff)
+```
+  
+Not all of regressors are statistically significant at 95% confidence level. For selecting regressors we will use automated model selection by AIC in a stepwise algorithm. There is the function **'step'** for that in R. We will not limit the scope. If scope operand is missing, the initial model is used as the upper model - that is what we need.  
+  
+``````{r, echo=TRUE, message=FALSE, results = 'asis'}
+selection <- step(MPG_fit, data=mtcars, k=2, trace = FALSE)
+```
+  
+
+# **4. Conclusions**  
+  
+Three variables were selected as the best predictors:  
+- Weight (wt)  
+- 1/4 mile time (qsec)  
+- Transmission type (am)  
+  
+In order to quantify the MPG difference between automatic and manual transmissions we just need 'am' coefficient in our selected model.  
+``````{r, echo=TRUE, message=FALSE, results = 'asis'}
+MPG_fit <- lm(mpg ~ wt + qsec + am, data = mtcars)
+knitr::kable(summary(MPG_fit)$coeff)
+```
+  
+**At 95% confidence level (p-value for "am" < 0.05) we may conclude that the MPG difference between automatic and manual transmissions is 2.9. With manual transmission one can drive 2.9 miles more than with automatic transmission with the same amount of gas (gallon).**
+  
+# **5. Diagnostics of the model**  
+  
+In order to be completely comfortable with our selected model we have to perform additional diagnostic tests. To evaluate the fit and residuals of a linear model generated by R (selection), we can use the plot(MPG_fit) to produce a series of 4 diagnostic plots:  
+``````{r, echo=TRUE, message=FALSE}
+par(mfrow = c(2, 2)); plot(MPG_fit)
+```
+  
+Looking at these plots we can be sure of the following:  
+  
+- there are no patterns for missing variables or heteroskedasticity  
+- there are no unusual patterns in residuals  
+- errors are normal  
+- there are no points that have substantial influence on our regression model  
+  
+We can conclude that our regression model is statistically significant.   
